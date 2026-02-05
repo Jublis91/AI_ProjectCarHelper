@@ -9,3 +9,4 @@ pandas
 pymupdf
 pytesseract
 pillow
+sentence-transformers

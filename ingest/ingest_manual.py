@@ -21,3 +21,21 @@ def render_page_png(page_num: int, zoom: float = 2.0) -> Path:
     doc.close()
 
     return out_path
+
+
+# tästä alaspäin on vain testailua varten
+
+def render_pages(pages: list[int]) -> None:
+    for p in pages:
+        out = render_page_png(p)
+        print(f"Sivu {p} -> {out}")
+
+
+if __name__ == "__main__":
+    pages = (
+        list(range(1, 11)) +      # alku
+        list(range(200, 211)) +   # keskeltä
+        list(range(880, 891))     # loppu
+    )
+
+    render_pages(pages)
