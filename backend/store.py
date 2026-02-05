@@ -10,7 +10,7 @@ def connect() -> sqlite3.Connection:
     DB_PATH.parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(DB_PATH)
     conn.execute("PRAGMA journal_mode=WAL;")
-    conn.execute("PRAGMA synchronus=NORMAL;")
+    conn.execute("PRAGMA synchronous=NORMAL;")
     return conn
 
 def init_db() -> None:
@@ -25,6 +25,18 @@ def init_db() -> None:
                 text TEXT NOT NULL,
                 embedding BLOB NOT NULL
             );
+            """)
+    
+    conn.commit()
+
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS parts(
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                part TEXT NOT NULL,
+                date TEXT,
+                cost REAL NOT NULL,
+                notes TEXT
+            );    
             """)
     
     conn.commit()
