@@ -12,3 +12,20 @@ def connect() -> sqlite3.Connection:
     conn.execute("PRAGMA journal_mode=WAL;")
     conn.execute("PRAGMA synchronus=NORMAL;")
     return conn
+
+def init_db() -> None:
+    conn = connect()
+    cur = conn.cursor()
+
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS chunks (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                source TEXT NOT NULL,
+                ref TEXT NOT NULL,
+                text TEXT NOT NULL,
+                embedding BLOB NOT NULL
+            );
+            """)
+    
+    conn.commit()
+    conn.close()
