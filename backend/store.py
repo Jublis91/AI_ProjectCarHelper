@@ -37,6 +37,14 @@ def init_db() -> None:
     );
     """)
 
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS manual_pages (
+                page_num INTEGER PRIMARY KEY,
+                text TEXT NOT NULL
+    );
+    """)
+
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_manual_pages_page ON manual_pages(page_num)")
     cur.execute("CREATE INDEX IF NOT EXISTS idx_chunks_source ON chunks(source);")
     cur.execute("CREATE INDEX IF NOT EXISTS idx_parts_part ON parts(part);")
     cur.execute("CREATE INDEX IF NOT EXISTS idx_parts_date ON parts(date);")

@@ -21,9 +21,3 @@ def render_page_png(page_num: int, zoom: float = 2.0) -> Path:
     doc.close()
 
     return out_path
-
-
-if __name__ == "__main__":
-    for p in [1, 10, 50]:
-        out = render_page_png(p)
-        print(f"Sivu {p} -> {out}")
