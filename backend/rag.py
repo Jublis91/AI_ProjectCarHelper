@@ -1,6 +1,7 @@
 # rag.py
 
 from __future__ import annotations
+from dataclasses import dataclass
 
 import numpy as np
 
@@ -73,3 +74,11 @@ def cosine_top_k(query_vec: np.ndarray, matrix: np.ndarray, k: int = 5)-> tuple[
     scores = sims[idx]
 
     return idx.astype(int), scores.astype(np.float32)
+
+
+@dataclass
+class Hit:
+    text: str
+    source: str
+    ref: str
+    score: float
