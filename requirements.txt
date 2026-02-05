@@ -6,3 +6,4 @@ pypdf
 numpy
 sentence-transformers
 pandas
+pymupdf
