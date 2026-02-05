@@ -5,7 +5,7 @@ from dataclasses import dataclass
 
 import numpy as np
 
-def chunk_text(text: str, chunk_size: int = 900, overlap: int = 150) -> list[str]:
+def chunk_text(text: str, chunk_size: int = 500, overlap: int = 150) -> list[str]:
     #  Perussiivous
     text = text.replace("\r\n", "\n").strip()
 
