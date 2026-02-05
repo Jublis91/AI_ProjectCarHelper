@@ -19,25 +19,27 @@ def init_db() -> None:
 
     cur.execute("""
     CREATE TABLE IF NOT EXISTS chunks (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                source TEXT NOT NULL,
-                ref TEXT NOT NULL,
-                text TEXT NOT NULL,
-                embedding BLOB NOT NULL
-            );
-            """)
-    
-    conn.commit()
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        source TEXT NOT NULL,
+        ref TEXT NOT NULL,
+        text TEXT NOT NULL,
+        embedding BLOB NOT NULL
+    );
+    """)
 
     cur.execute("""
-    CREATE TABLE IF NOT EXISTS parts(
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                part TEXT NOT NULL,
-                date TEXT,
-                cost REAL NOT NULL,
-                notes TEXT
-            );    
-            """)
-    
+    CREATE TABLE IF NOT EXISTS parts (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        date TEXT,
+        part TEXT NOT NULL,
+        cost REAL,
+        notes TEXT
+    );
+    """)
+
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_chunks_source ON chunks(source);")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_parts_part ON parts(part);")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_parts_date ON parts(date);")
+
     conn.commit()
     conn.close()
