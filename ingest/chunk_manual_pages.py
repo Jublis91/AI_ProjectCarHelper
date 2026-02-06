@@ -39,7 +39,7 @@ def main() -> None:
     total_chunks = 0
 
     for page_num, page_text in rows:
-        # page_text on yhden sivun OCR- teksti
+        # Each row contains OCR text for a single manual page.
         # Split the OCR text into smaller chunks for embedding usage.
         chunks = chunk_text(page_text)
         print(f"Sivu {page_num}: {len(chunks)} chunkia")

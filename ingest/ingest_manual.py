@@ -26,7 +26,8 @@ def render_page_png(page_num: int, zoom: float = 2.0) -> Path:
 
     # Open the PDF and render the page using a scaling matrix.
     doc = fitz.open(str(PDF_PATH))
-    page = doc.load_page(page_num - 1)  # PyMuPDF on 0-indeksoitu
+    # PyMuPDF uses 0-based indexing for page numbers.
+    page = doc.load_page(page_num - 1)
     mat = fitz.Matrix(zoom, zoom)
     pix = page.get_pixmap(matrix=mat)
     pix.save(str(out_path))
@@ -35,7 +36,7 @@ def render_page_png(page_num: int, zoom: float = 2.0) -> Path:
     return out_path
 
 
-# tästä alaspäin on vain testailua varten
+# Everything below is only for quick manual testing.
 
 def render_pages(pages: list[int]) -> None:
     """Render and print multiple pages for quick verification."""
@@ -47,9 +48,9 @@ def render_pages(pages: list[int]) -> None:
 if __name__ == "__main__":
     # Example page ranges for smoke-testing the PDF rendering.
     pages = (
-        list(range(1, 11)) +      # alku
-        list(range(200, 211)) +   # keskeltä
-        list(range(880, 891))     # loppu
+        list(range(1, 11)) +      # start
+        list(range(200, 211)) +   # middle
+        list(range(880, 891))     # end
     )
 
     # Render the sample pages and emit file paths.

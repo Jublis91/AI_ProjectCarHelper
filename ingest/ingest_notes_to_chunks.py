@@ -37,11 +37,11 @@ def main() -> None:
     conn = connect()
     cur = conn.cursor()
 
-    # 1) poista vanhat notes-chunkit
+    # 1) Remove existing notes chunks before inserting new ones.
     cur.execute("DELETE FROM chunks WHERE source = ?", (SOURCE,))
     conn.commit()
 
-    # 2) lisää uudet
+    # 2) Insert the new chunks.
     rows = []
     for ch in chunks:
         # Embeddings are not computed here; empty bytes placeholder.
@@ -53,7 +53,7 @@ def main() -> None:
     )
     conn.commit()
 
-    # 3) varmennus
+    # 3) Verify insert count for sanity.
     n = cur.execute(
         "SELECT COUNT(*) FROM chunks WHERE source = ?",
         (SOURCE,),

@@ -9,7 +9,7 @@ import pandas as pd
 
 ROOT = Path(__file__).resolve().parents[1]
 # Source CSV containing parts data (replace if Excel import is added later).
-PARTS_PATH = ROOT / "data" / "parts.csv"  # vaihda myöhemmin jos excel tms
+PARTS_PATH = ROOT / "data" / "parts.csv"  # replace later if Excel import is added
 
 REQUIRED_COLUMMS = ["date", "part", "cost", "notes"]
 
@@ -28,14 +28,14 @@ def main() -> None:
 
     df = df[REQUIRED_COLUMMS]
 
-    # part pakolinen
+    # "part" is required: trim whitespace and drop empty values.
     df["part"] = df["part"].astype(str).str.strip()
     df = df[df["part"].notna() & (df["part"] != "")]
 
-    #cost float tai null
+    # Cost should be a float; invalid values become NaN/NULL.
     df["cost"] = pd.to_numeric(df["cost"], errors="coerce")
 
-    #date ja notes siistiksi
+    # Normalize date/notes to strings where present.
     df["date"] = df["date"].astype(str).where(df["date"].notna(), None)
     df["notes"] = df["notes"].astype(str).where(df["notes"].notna(), None)
 
@@ -61,7 +61,7 @@ def main() -> None:
     actual = cur.execute("SELECT COUNT(*) FROM parts").fetchone()[0]
     conn.close()
 
-    # jos nämä ei täsmää joku no pielessä
+    # If counts differ, something went wrong during insert.
     print(f"Odotus: {expected}")
     print(f"DB count: {actual}")
 

@@ -6,38 +6,36 @@ from dataclasses import dataclass
 import numpy as np
 
 def chunk_text(text: str, chunk_size: int = 500, overlap: int = 150) -> list[str]:
-    # 1) Perussiivous: normalisoidaan rivinvaihdot ja poistetaan
-    #    alusta/lopusta ylimääräiset välit.
+    # 1) Basic cleanup: normalize newlines and trim leading/trailing whitespace.
     text = text.replace("\r\n", "\n").strip()
 
-    # 2) Rivikohtainen siivous: trimmaa rivit ja poista tyhjät rivit,
-    #    jotta pätkiminen ei ota mukaan pelkkää tyhjää sisältöä.
+    # 2) Line-level cleanup: strip each line and remove empties so we avoid
+    #    chunking blank content.
     lines = [line.strip() for line in text.split("\n")]
     lines = [line for line in lines if line]
     text = "\n".join(lines).strip()
 
-    # 3) Jos siivouksen jälkeen ei ole sisältöä, ei ole mitään pätkittävää.
+    # 3) If nothing remains after cleanup, there is nothing to chunk.
     if not text:
         return []
     
-    # 4) Pilkotaan merkkimäärän mukaan: muodostetaan chunkit, joissa on
-    #    päällekkäinen alue (overlap), jotta konteksti ei katkea.
+    # 4) Split by character count with overlap to preserve context between chunks.
     chunks: list[str] = []
     start = 0
     n = len(text)
 
     while start < n:
-        # Rajataan chunkin loppu merkkimäärän mukaisesti.
+        # Clamp the chunk end to the configured chunk size.
         end = min(start + chunk_size, n)
         chunk = text[start:end].strip()
         if chunk:
             chunks.append(chunk)
 
-        # Kun ollaan lopussa, lopetetaan silmukka.
+        # Stop when we reach the end of the text.
         if end == n:
             break
 
-        # Siirrytään seuraavan chunkin alkuun huomioiden overlap.
+        # Move the window forward, backing up by the overlap amount.
         start = end - overlap
         if start < 0:
             start = 0
@@ -46,17 +44,17 @@ def chunk_text(text: str, chunk_size: int = 500, overlap: int = 150) -> list[str
 
 def cosine_top_k(query_vec: np.ndarray, matrix: np.ndarray, k: int = 5)-> tuple[np.ndarray, np.ndarray]:
     """
-    query_vec: muoto (d,)
-    matrix: muoto (N, d)
-    palautaa:
-        idx: indeksit (k,)
-        scores: cos-sim scoret (k,)
+    query_vec: shape (d,)
+    matrix: shape (N, d)
+    returns:
+        idx: indices (k,)
+        scores: cosine similarity scores (k,)
     """
-    # 1) Tyhjä tietomassa -> ei osumia
+    # 1) Empty matrix means there are no hits.
     if matrix.size == 0:
         return np.array([], dtype=int), np.array([], dtype=np.float32)
     
-    # 2) Varmistetaan oikeat dimensioformaatit ennen laskentaa.
+    # 2) Validate expected dimensions before math.
     if query_vec.ndim != 1:
         raise ValueError("query_vec pitää olla 1D, muoto (d,)")
     
@@ -66,18 +64,18 @@ def cosine_top_k(query_vec: np.ndarray, matrix: np.ndarray, k: int = 5)-> tuple[
     if matrix.shape[1] != query_vec.shape[0]:
         raise ValueError("dimensiot ei täsmää")
     
-    # 3) Normalisoidaan vektorit, jotta dot product = cosine-sim.
+    # 3) Normalize vectors so dot product equals cosine similarity.
     q = query_vec.astype(np.float32)
     q = q / (np.linalg.norm(q) + 1e-12)
 
     m = matrix.astype(np.float32)
     m = m / (np.linalg.norm(m, axis=1, keepdims=True) + 1e-12)
 
-    # 4) Cos-sim: normalisoidun vektorin dot product.
-    sims = m @ q # (N,)
+    # 4) Cosine similarity: dot product of normalized vectors.
+    sims = m @ q  # (N,)
 
-    # 5) Top-k: rajataan k, poimitaan suurimmat ja järjestetään.
-    k = max(1,min(int(k), sims.shape[0]))
+    # 5) Top-k: clamp k, select the largest scores, and order them.
+    k = max(1, min(int(k), sims.shape[0]))
     idx = np.argpartition(-sims, kth=k - 1)[:k]
     idx = idx[np.argsort(-sims[idx])]
     scores = sims[idx]
