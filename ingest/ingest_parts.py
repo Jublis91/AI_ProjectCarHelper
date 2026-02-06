@@ -11,7 +11,7 @@ ROOT = Path(__file__).resolve().parents[1]
 # Source CSV containing parts data (replace if Excel import is added later).
 PARTS_PATH = ROOT / "data" / "parts.csv"  # replace later if Excel import is added
 
-REQUIRED_COLUMMS = ["date", "part", "cost", "notes"]
+REQUIRED_COLUMNS = ["date", "part", "cost", "notes"]
 
 def main() -> None:
     init_db()
@@ -22,11 +22,11 @@ def main() -> None:
 
     df = pd.read_csv(PARTS_PATH)
 
-    for col in REQUIRED_COLUMMS:
+    for col in REQUIRED_COLUMNS:
         if col not in df.columns:
             df[col] = None
 
-    df = df[REQUIRED_COLUMMS]
+    df = df[REQUIRED_COLUMNS]
 
     # "part" is required: trim whitespace and drop empty values.
     df["part"] = df["part"].astype(str).str.strip()

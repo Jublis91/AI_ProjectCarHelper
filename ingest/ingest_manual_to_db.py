@@ -120,7 +120,7 @@ def main() -> None:
 
     # Quick verification of inserted chunk count.
     c = sqlite3.connect(DB_PATH)
-    n = c.execute(f"SELECT COUNT(*) FROM chunks WHERE source=?", (SOURCE,)).fetchall()[0]
+    n = c.execute("SELECT COUNT(*) FROM chunks WHERE source=?", (SOURCE,)).fetchone()[0]
     c.close()
     print(f"SELECT COUNT(*) WHERE source=manual: {n}")
 
