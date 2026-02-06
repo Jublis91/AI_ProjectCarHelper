@@ -1,8 +1,11 @@
+"""Quick sanity check for sentence transformer embeddings."""
+
 from sentence_transformers import SentenceTransformer
 
 import numpy as np
 
 def main():
+    """Run a simple embedding flow and print shape/type info."""
     # ladataan malli
     model = SentenceTransformer("all-MiniLM-L6-v2")
 

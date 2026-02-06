@@ -1,3 +1,5 @@
+"""OCR cached manual page images and upsert text into the database."""
+
 from __future__ import annotations
 from pathlib import Path
 from PIL import Image
@@ -7,21 +9,26 @@ import re
 import pytesseract
 
 ROOT = Path(__file__).resolve().parents[1]
+# Directory where rendered PNGs are stored.
 PAGES_DIR = ROOT / "db" / "cache" / "pages"
+# Regex used to parse the page number from the PNG filename.
 PAGE_RE = re.compile(r"manual_page_(\d+)\.png$", re.IGNORECASE)
 
 def parse_page_num(path: Path) -> int:
+    """Extract a page number from a cached PNG filename."""
     m = PAGE_RE.search(path.name)
     if not m:
         raise ValueError(f"Virheellinen tiedosto nimi: {path.name}")
     return int(m.group(1))
 
 def ocr_image(path: Path, lang: str = "eng") -> str:
+    """Run Tesseract OCR on a single PNG image."""
     img = Image.open(path)
     text = pytesseract.image_to_string(img, lang=lang)
     return (text or "").strip()
 
 def upsert_manual_page(page_num: int, text: str) -> None:
+    """Insert or update OCR text for a manual page in the database."""
     conn = connect()
     cur  = conn.cursor()
     cur.execute(
@@ -37,6 +44,7 @@ def upsert_manual_page(page_num: int, text: str) -> None:
     conn.close()
 
 def main() -> None:
+    """Main entry point for OCRing cached manual PNGs."""
     init_db()
 
     if not PAGES_DIR.exists():
@@ -48,16 +56,19 @@ def main() -> None:
         print("EI PNG-TIEDOSTOJA. Kansio on tyhjä: db/cache/pages")
         return
     
+    # Track summary stats for logging at the end.
     total = 0
     nonempty = 0
 
     for png in pngs:
         page_num = parse_page_num(png)
+        # OCR each image; empty strings are allowed but skipped for DB writes.
         text = ocr_image(png, lang="eng")
 
         total += 1
         if text:
             nonempty += 1
+            # OCR each image; empty strings are allowed but skipped for DB writes.
             upsert_manual_page(page_num, text)
 
         print(f"Sivu {page_num}: {len(text)} merkkiä")
