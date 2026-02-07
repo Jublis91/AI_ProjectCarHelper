@@ -12,6 +12,7 @@ import re
 
 app = FastAPI(title="AI Project Car Helper")
 
+# Loaded once at startup to serve parts lookups without re-querying per request.
 PARTS_DF = None
 
 class AskIn(BaseModel):
@@ -22,16 +23,19 @@ class AskIn(BaseModel):
 def on_startup() -> None:
     global PARTS_DF
 
+    # Initialize the local database and cache parts for rule-based matches.
     init_db()
     c = connect()
     PARTS_DF = load_parts_df(c)
     c.close()
     
+    # Load the embedding model once so requests reuse it.
     print("Loading embedding model...")
     from sentence_transformers import SentenceTransformer
     app.state.embed_model = SentenceTransformer("all-MiniLM-L6-v2")
     print("Embedding model loaded.")
 
+    # Load stored chunk embeddings for RAG retrieval.
     print("Loading chunks from DB...")
     with sqlite3.connect(DB_PATH) as conn:
         try:
@@ -46,6 +50,7 @@ def on_startup() -> None:
     texts: list[str] = []
     vectors: list[np.ndarray] = []
 
+    # Decode stored embeddings to numpy vectors while keeping metadata aligned.
     for source, ref, text, emb_blob in rows:
         vec = np.frombuffer(emb_blob, dtype=np.float32)
         if vec.size == 0:
@@ -65,6 +70,7 @@ def on_startup() -> None:
     app.state.chunk_texts = texts
     app.state.chunk_matrix = matrix
 
+    # Helpful diagnostics to confirm startup cache sizes.
     print(f"Chunks loaded: {matrix.shape[0]}")
     print(f"Parts rows loaded: {0 if PARTS_DF is None else len(PARTS_DF)}")
 
@@ -77,11 +83,13 @@ def health() -> dict:
 
 
 def page_from_ref(ref: str) -> int | None:
+    # Extract a "#page=123" suffix when present in a source reference.
     m = re.search(r"#page=(\d+)", ref)
     return int(m.group(1)) if m else None
 
 
 def clean_ocr(t: str) -> str:
+    # Normalize OCR text by removing line breaks and extra whitespace.
     t = t.replace("\n", " ")
     t = re.sub(r"\s+", " ", t).strip()
     return t
@@ -107,23 +115,24 @@ def ask(payload: AskIn) -> dict:
     if not q:
         return {"answer": "", "sources": []}
 
-    # 1) Osalistasäännöt ensin, ohittaa RAGin
     if PARTS_DF is not None:
         rule_result = try_rules(q, PARTS_DF)
         if rule_result is not None:
             return rule_result
 
-    # 2) Muuten RAG manual-chunkeista
     model = getattr(app.state, "embed_model", None)
     matrix = getattr(app.state, "chunk_matrix", None)
 
+    # Guard: without cached embeddings, return empty response instead of erroring.
     if model is None or matrix is None or matrix.shape[0] == 0:
         return {"answer": "", "sources": []}
 
+    # Embed the query and retrieve top-k similar chunks.
     q_vec = model.encode([q], convert_to_numpy=True).astype(np.float32)[0]
 
     idx, scores = cosine_top_k(q_vec, matrix, k=payload.top_k)
 
+    # Build source payloads with page hints and short snippets.
     sources_out = []
     for i, s in zip(idx, scores):
         i2 = int(i)
@@ -138,6 +147,7 @@ def ask(payload: AskIn) -> dict:
             }
         )
 
+    # Prefer a readable OCR chunk as the answer text.
     answer = ""
     for i in idx:
         cand = clean_ocr(app.state.chunk_texts[int(i)])
@@ -145,6 +155,7 @@ def ask(payload: AskIn) -> dict:
             answer = cand[:600]
             break
 
+    # Fallback to the best-ranked chunk if nothing passes heuristics.
     if not answer and len(idx) > 0:
         answer = clean_ocr(app.state.chunk_texts[int(idx[0])])[:600]
 
