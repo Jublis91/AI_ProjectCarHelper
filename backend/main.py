@@ -1,15 +1,17 @@
 from __future__ import annotations
 from fastapi import FastAPI
 from backend.store import init_db
+from backend.rag import cosine_top_k
 from pydantic import BaseModel, Field
 
 import numpy as np
 import sqlite3
+import re
 
 app = FastAPI(title="AI Project Car Helper")
 
 class AskIn(BaseModel):
-    question: str = Field(..., description="User question in natural lanfuafe")
+    question: str = Field(..., description="User question in natural language")
     top_k: int = Field(5, ge=1, le=20, description="Number of results to return")
 
 @app.on_event("startup")
@@ -68,8 +70,64 @@ def health() -> dict:
 
 @app.post("/ask")
 def ask(payload: AskIn) -> dict:
-    # Placeholder
-    return {
-        "question": payload.question,
-        "top_k": payload.top_k,
-    }
+    q = (payload.question or "").strip()
+    if not q:
+        return {"answer": "", "sources": []}
+    
+    model = getattr(app.state, "embed_model", None)
+    matrix = getattr(app.state, "chunk_matrix", None)
+
+    if model is None or matrix is None or matrix.shape[0] == 0:
+        return {"answer": "", "sources": []}
+    
+    q_vec = model.encode([q], convert_to_numpy=True)
+    q_vec = q_vec.astype(np.float32)[0]
+    print("q_vec shape:", getattr(q_vec, "shape", None), "matrix shape:", matrix.shape)
+
+    idx, scores = cosine_top_k(q_vec, matrix, k=payload.top_k)
+
+    def page_from_ref(ref: str) -> int | None:
+        m = re.search(r"#page=(\d+)", ref)
+        return int(m.group(1)) if m else None
+
+    sources_out = []
+    for i, s in zip(idx, scores):
+        sources_out.append(
+            {
+                "source": app.state.chunk_sources[int(i)],
+                "ref": app.state.chunk_refs[int(i)],
+                "page": page_from_ref(app.state.chunk_refs[int(i)]),
+                "score": float(s),
+                "snippet": app.state.chunk_texts[int(i)][:300].strip(),
+            }
+        )
+
+    def clean_ocr(t: str) -> str:
+        t = t.replace("\n", " ")
+        t = re.sub(r"\s+", " ", t).strip()
+        return t
+
+    def looks_readable(t: str) -> bool:
+        if len(t) < 120:
+            return False
+        letters = sum(ch.isalpha() for ch in t)
+        if letters / max(1, len(t)) < 0.55:
+            return False
+        weird = sum((not ch.isalnum()) and (ch not in " .,:;()/-'") for ch in t)
+        if weird / max(1, len(t)) > 0.08:
+            return False
+        if " " not in t:
+            return False
+        return True
+
+    answer = ""
+    for i in idx:
+        cand = clean_ocr(app.state.chunk_texts[int(i)])
+        if looks_readable(cand):
+            answer = cand[:600]
+            break
+
+    if not answer and len(idx) > 0:
+        answer = clean_ocr(app.state.chunk_texts[int(idx[0])])[:600]
+
+    return {"answer": answer, "sources": sources_out}
