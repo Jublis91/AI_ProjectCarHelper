@@ -7,7 +7,7 @@ import pandas as pd
 def mask_all_tokens(series: pd.Series, target: str) -> pd.Series:
     toks = [t for t in (target or "").lower().split() if t]
     if not toks:
-        return series.str.contains("###", na=False, regex=False)  # aina false
+        return pd.Series([False] * len(series), index=series.index)
 
     m = pd.Series([True] * len(series), index=series.index)
     for tok in toks:

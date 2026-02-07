@@ -1,6 +1,6 @@
 from __future__ import annotations
 from fastapi import FastAPI
-from backend.store import init_db, connect
+from backend.store import init_db, connect, DB_PATH
 from backend.rag import cosine_top_k
 from pydantic import BaseModel, Field
 from backend.rules import try_rules
@@ -33,14 +33,13 @@ def on_startup() -> None:
     print("Embedding model loaded.")
 
     print("Loading chunks from DB...")
-    conn = sqlite3.connect("db/app.sqlite")
-    try:
-        rows = conn.execute(
-            "SELECT source, ref, text, embedding FROM chunks"
-        ).fetchall()
-    except sqlite3.OperationalError:
-        rows = []
-    conn.close()
+    with sqlite3.connect(DB_PATH) as conn:
+        try:
+            rows = conn.execute(
+                "SELECT source, ref, text, embedding FROM chunks"
+            ).fetchall()
+        except sqlite3.OperationalError:
+            rows = []
 
     sources: list[str] = []
     refs: list[str] = []

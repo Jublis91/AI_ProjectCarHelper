@@ -45,7 +45,7 @@ def try_rules(question: str, parts_df) -> dict | None:
             if r["last_date"]:
                 answer = f"Kyllä. Viimeksi vaihdettu {r['last_date']} ({r['matches']} merkintää)."
             else:
-                answer = f"Kyllä. Vaihdettssu {r['matches']} kertaa."
+                answer = f"Kyllä. Vaihdettu {r['matches']} kertaa."
         else:
             answer = f"Ei. Osaa '{target}' ei ole vaihdettu."
         return {
