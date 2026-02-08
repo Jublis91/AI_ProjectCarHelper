@@ -214,3 +214,5 @@ __marimo__/
 # Own
 data/**
 !data/.gitkeep
+order.txt
+scripts/create_ollama_issues_small.sh
