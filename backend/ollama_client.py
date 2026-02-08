@@ -7,13 +7,23 @@ import requests
 @dataclass
 class OllamaError(Exception):
     message: str
+    code: str ="ollama_error"
     status_code: Optional[int] = None
 
     def __str__(self) -> str:
-        if self.status_code is None:
-            return self.message
-        return f"{self.message} (status_code={self.status_code})"
-    
+        return self.message
+
+class OllamaConnectionError(OllamaError):
+    def __init__(self, message: str = "Ollama connection failed"):
+        super().__init__(message=message, code="connection_error")
+
+class OllamaTimeoutError(OllamaError):
+    def __init__(self, message: str = "Ollama request timed out"):
+        super().__init__(message=message, code="timeout")
+
+class OllamaBadResponseError(OllamaError):
+    def __init__(self, message: str = "Ollama returned bad response", status_code: Optional[int] = None):
+        super().__init__(message=message, code="bad_response", status_code=status_code)
 
 def ollama_generate(
         *,
@@ -35,8 +45,12 @@ def ollama_generate(
 
     try:
         r = requests.post(url, json=payload, timeout=timeout_sec)
+    except requests.Timeout as e:
+        raise OllamaError(f"Ollama request timed out") from e
+    except requests.ConnectionError as e:
+        raise OllamaError("Ollama connection failed") from e
     except requests.RequestException as e:
-        raise OllamaError(f"Ollama request failed {e}") from e
+        raise OllamaError("Ollama request failed") from e
     
     if r.status_code != 200:
         text = (r.text or "").strip()
@@ -49,7 +63,7 @@ def ollama_generate(
         raise OllamaError("Ollama response was not valid JSON") from e
     
     out = data.get("response")
-    if not isinstance(out, str):
-        raise OllamaError("Ollama JSON missing 'response' string")
+    if not isinstance(out, str) or not out.strip():
+        raise OllamaError("Ollama returned empty response")
 
     return out.strip()

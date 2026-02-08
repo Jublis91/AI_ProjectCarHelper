@@ -13,6 +13,14 @@ from backend.rules import try_rules
 from backend.store import DB_PATH, connect, init_db
 from backend.settings import USE_OLLAMA, OLLAMA_BASE_URL, OLLAMA_MODEL, OLLAMA_TIMEOUT_SEC
 from backend.ollama_process import start_ollama, stop_ollama
+from backend.prompt_builder import build_prompt
+from backend.ollama_client import (
+    ollama_generate,
+    OllamaError,
+    OllamaConnectionError,
+    OllamaTimeoutError,
+    OllamaBadResponseError,
+)
 
 app = FastAPI(title="AI Project Car Helper")
 
@@ -205,13 +213,23 @@ def ask(payload: AskIn) -> dict:
     sources_out = build_sources(idx, scores)
 
     if USE_OLLAMA:
-        return normalize_response(
-            {
-                "answer": "LLM path enabled, generation not implemented yet",
-                "sources": sources_out,
-            },
-            llm_mode="ollama",
-        )
+        prompt = build_prompt(question=q, context="...tähän chunkit myöhemmin...")
+        try:
+            txt = ollama_generate(
+                base_url=OLLAMA_BASE_URL,
+                model=OLLAMA_MODEL,
+                prompt=prompt,
+                timeout_sec=OLLAMA_TIMEOUT_SEC,
+            )
+            return normalize_response({"answer": txt, "sources": sources_out}, llm_mode="ollama")
+        except OllamaTimeoutError:
+            return {"answer": "LLM timeout", "sources": sources_out, "llm_mode": "ollama_error", "error": "timeout"}
+        except OllamaConnectionError:
+            return {"answer": "LLM not available", "sources": sources_out, "llm_mode": "ollama_error", "error": "connection"}
+        except OllamaBadResponseError:
+            return {"answer": "LLM bad response", "sources": sources_out, "llm_mode": "ollama_error", "error": "bad_response"}
+        except OllamaError:
+            return {"answer": "LLM error", "sources": sources_out, "llm_mode": "ollama_error", "error": "unknown"}
 
     answer = pick_answer_from_chunks(idx)
     return normalize_response(
