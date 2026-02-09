@@ -11,9 +11,10 @@ from backend.parts_logic import load_parts_df
 from backend.rag import cosine_top_k
 from backend.rules import try_rules
 from backend.store import DB_PATH, connect, init_db
-from backend.settings import USE_OLLAMA, OLLAMA_BASE_URL, OLLAMA_MODEL, OLLAMA_TIMEOUT_SEC
+from backend.settings import USE_OLLAMA, OLLAMA_BASE_URL, OLLAMA_MODEL, OLLAMA_TIMEOUT_SEC, MAX_CONTEXT_CHARS
 from backend.ollama_process import start_ollama, stop_ollama
 from backend.prompt_builder import build_prompt
+from backend.context_formatter import format_context
 from backend.ollama_client import (
     ollama_generate,
     OllamaError,
@@ -26,7 +27,6 @@ app = FastAPI(title="AI Project Car Helper")
 
 # Loaded once at startup to serve parts lookups without re-querying per request.
 PARTS_DF = None
-OLLAMA_PROC = None
 OLLAMA_HANDLE = None
 
 class AskIn(BaseModel):
@@ -182,29 +182,40 @@ def normalize_response(resp: dict, llm_mode: str) -> dict:
         out["answer"] = ""
     if out.get("sources") is None:
         out["sources"] = []
-    if "llm_mode" not in out:
-        out["llm_mode"] = llm_mode
 
+    out["llm_mode"] = llm_mode
     return out
+
+def fallback_payload(*, idx, sources_out: list[dict], error_code: str) -> dict:
+    fallback_answer = pick_answer_from_chunks(idx)
+    return normalize_response(
+        {
+            "answer": fallback_answer,
+            "sources": sources_out,
+            "fallback": True,
+            "error": error_code,
+        },
+        llm_mode="fallback",
+    )
 
 
 @app.post("/ask")
 def ask(payload: AskIn) -> dict:
     q = (payload.question or "").strip()
     if not q:
-        return {"answer": "", "sources": [], "llm_mode": "off"}
+        return normalize_response({"answer": "", "sources": []}, llm_mode="off")
 
     if PARTS_DF is not None:
         rule_result = try_rules(q, PARTS_DF)
         if rule_result is not None:
-            return normalize_response(rule_result, llm_mode="rules")
+            return normalize_response(rule_result, llm_mode="off")
 
     model = getattr(app.state, "embed_model", None)
     matrix = getattr(app.state, "chunk_matrix", None)
 
     # Guard: without cached embeddings, return empty response instead of erroring.
     if model is None or matrix is None or matrix.shape[0] == 0:
-        return {"answer": "", "sources": [], "llm_mode": "off"}
+        return normalize_response({"answer": "", "sources": []}, llm_mode="off")
 
     # Embed the query and retrieve top-k similar chunks.
     q_vec = model.encode([q], convert_to_numpy=True).astype(np.float32)[0]
@@ -213,7 +224,17 @@ def ask(payload: AskIn) -> dict:
     sources_out = build_sources(idx, scores)
 
     if USE_OLLAMA:
-        prompt = build_prompt(question=q, context="...tähän chunkit myöhemmin...")
+        context_text = format_context(
+            idx=idx,
+            chunk_sources=app.state.chunk_sources,
+            chunk_refs=app.state.chunk_refs,
+            chunk_texts=app.state.chunk_texts,
+            per_chunk_char_limit=900,
+            max_context_chars=MAX_CONTEXT_CHARS,
+        )
+
+        prompt = build_prompt(question=q, context=context_text)
+
         try:
             txt = ollama_generate(
                 base_url=OLLAMA_BASE_URL,
@@ -221,18 +242,15 @@ def ask(payload: AskIn) -> dict:
                 prompt=prompt,
                 timeout_sec=OLLAMA_TIMEOUT_SEC,
             )
-            return normalize_response({"answer": txt, "sources": sources_out}, llm_mode="ollama")
+            return normalize_response(
+                {"answer": txt, "sources": sources_out, "fallback": False},
+                llm_mode="ollama",
+            )
         except OllamaTimeoutError:
-            return {"answer": "LLM timeout", "sources": sources_out, "llm_mode": "ollama_error", "error": "timeout"}
+            return fallback_payload(idx=idx, sources_out=sources_out, error_code="timeout")
         except OllamaConnectionError:
-            return {"answer": "LLM not available", "sources": sources_out, "llm_mode": "ollama_error", "error": "connection"}
+            return fallback_payload(idx=idx, sources_out=sources_out, error_code="connection")
         except OllamaBadResponseError:
-            return {"answer": "LLM bad response", "sources": sources_out, "llm_mode": "ollama_error", "error": "bad_response"}
+            return fallback_payload(idx=idx, sources_out=sources_out, error_code="bad_response")
         except OllamaError:
-            return {"answer": "LLM error", "sources": sources_out, "llm_mode": "ollama_error", "error": "unknown"}
-
-    answer = pick_answer_from_chunks(idx)
-    return normalize_response(
-        {"answer": answer, "sources": sources_out},
-        llm_mode="off",
-    )
+            return fallback_payload(idx=idx, sources_out=sources_out, error_code="unknown")
