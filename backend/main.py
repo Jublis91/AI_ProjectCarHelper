@@ -11,7 +11,7 @@ from backend.parts_logic import load_parts_df
 from backend.rag import cosine_top_k
 from backend.rules import try_rules
 from backend.store import DB_PATH, connect, init_db
-from backend.settings import USE_OLLAMA, OLLAMA_BASE_URL, OLLAMA_MODEL, OLLAMA_TIMEOUT_SEC, MAX_CONTEXT_CHARS
+from backend.settings import USE_OLLAMA, OLLAMA_BASE_URL, OLLAMA_MODEL, OLLAMA_TIMEOUT_SEC, MAX_CONTEXT_CHARS, MIN_SCORE
 from backend.ollama_process import start_ollama, stop_ollama
 from backend.prompt_builder import build_prompt
 from backend.context_formatter import format_context
@@ -220,37 +220,53 @@ def ask(payload: AskIn) -> dict:
     # Embed the query and retrieve top-k similar chunks.
     q_vec = model.encode([q], convert_to_numpy=True).astype(np.float32)[0]
     idx, scores = cosine_top_k(q_vec, matrix, k=payload.top_k)
-
     sources_out = build_sources(idx, scores)
 
-    if USE_OLLAMA:
-        context_text = format_context(
-            idx=idx,
-            chunk_sources=app.state.chunk_sources,
-            chunk_refs=app.state.chunk_refs,
-            chunk_texts=app.state.chunk_texts,
-            per_chunk_char_limit=900,
-            max_context_chars=MAX_CONTEXT_CHARS,
+    best = float(scores[0]) if len(scores) > 0 else 0.0
+    if best < MIN_SCORE:
+        return normalize_response(
+            {
+                "answer": "En löydä tästä aineistosta.",
+                "sources": sources_out,
+                "fallback": False,
+                "top_score": best,
+            },
+            llm_mode="off",
         )
 
-        prompt = build_prompt(question=q, context=context_text)
+    if not USE_OLLAMA:
+        answer = pick_answer_from_chunks(idx)
+        return normalize_response(
+            {"answer": answer, "sources": sources_out, "fallback": False},
+            llm_mode="off",
+        )
 
-        try:
-            txt = ollama_generate(
-                base_url=OLLAMA_BASE_URL,
-                model=OLLAMA_MODEL,
-                prompt=prompt,
-                timeout_sec=OLLAMA_TIMEOUT_SEC,
-            )
-            return normalize_response(
-                {"answer": txt, "sources": sources_out, "fallback": False},
-                llm_mode="ollama",
-            )
-        except OllamaTimeoutError:
-            return fallback_payload(idx=idx, sources_out=sources_out, error_code="timeout")
-        except OllamaConnectionError:
-            return fallback_payload(idx=idx, sources_out=sources_out, error_code="connection")
-        except OllamaBadResponseError:
-            return fallback_payload(idx=idx, sources_out=sources_out, error_code="bad_response")
-        except OllamaError:
-            return fallback_payload(idx=idx, sources_out=sources_out, error_code="unknown")
+    context_text = format_context(
+        idx=idx,
+        chunk_sources=app.state.chunk_sources,
+        chunk_refs=app.state.chunk_refs,
+        chunk_texts=app.state.chunk_texts,
+        per_chunk_char_limit=900,
+        max_context_chars=MAX_CONTEXT_CHARS,
+    )
+    prompt = build_prompt(question=q, context=context_text)
+
+    try:
+        txt = ollama_generate(
+            base_url=OLLAMA_BASE_URL,
+            model=OLLAMA_MODEL,
+            prompt=prompt,
+            timeout_sec=OLLAMA_TIMEOUT_SEC,
+        )
+        return normalize_response(
+            {"answer": txt, "sources": sources_out, "fallback": False},
+            llm_mode="ollama",
+        )
+    except OllamaTimeoutError:
+        return fallback_payload(idx=idx, sources_out=sources_out, error_code="timeout")
+    except OllamaConnectionError:
+        return fallback_payload(idx=idx, sources_out=sources_out, error_code="connection")
+    except OllamaBadResponseError:
+        return fallback_payload(idx=idx, sources_out=sources_out, error_code="bad_response")
+    except OllamaError:
+        return fallback_payload(idx=idx, sources_out=sources_out, error_code="unknown")

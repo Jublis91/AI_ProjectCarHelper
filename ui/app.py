@@ -3,6 +3,14 @@ import requests
 
 BACKEND_URL = "http://localhost:8000"
 
+def llm_mode_label(llm_mode: str) -> str:
+    m = (llm_mode or "").strip().lower()
+    if m == "ollama":
+        return "Vastaus tuli: LLM (Ollama)"
+    if m == "fallback":
+        return "Vastaus tuli: fallback (LLM epäonnistui, käytetään kontekstia)"
+    return "Vastaus tuli: konteksti (ei LLM)"
+
 st.set_page_config(
     page_title="AI-projektiautoavustaja",
     page_icon="🚗",
@@ -41,22 +49,42 @@ if ask:
 
                 answer = data.get("answer", "")
                 sources = data.get("sources", [])
+                llm_mode = data.get("llm_mode", "off")
 
                 st.subheader("Vastaus")
+                st.caption(llm_mode_label(llm_mode))
+
+                if llm_mode == "fallback":
+                    err = (data.get("error") or "").strip()
+                    if err:
+                        st.caption(f"Syy: {err}")
+
                 st.write(answer if answer else "Ei vastausta.")
 
                 st.subheader("Lähteet")
                 if not sources:
-                    st.info("Ei lähteitä.")
+                    st.markdown("- Ei lähteitä.")
                 else:
                     for i, s in enumerate(sources, start=1):
-                        source = s.get("source", "")
-                        ref = s.get("ref", "")
-                        score = s.get("score", "")
-                        st.write(f"{i}. source: {source}")
-                        st.write(f"   ref: {ref}")
-                        st.write(f"   score: {score}")
-                        st.divider()
+                        source = (s.get("source") or "").strip()
+                        ref = (s.get("ref") or "").strip()
+                        page = s.get("page", None)
+                        score = s.get("score", None)
+                        snippet = (s.get("snippet") or "").strip()
+
+                        src_label = source if source else "unknown"
+                        page_label = f", sivu {page}" if page is not None else ""
+                        score_label = f", score {float(score):.3f}" if isinstance(score, (int, float)) else ""
+
+                        snippet_short = snippet[:160].strip()
+                        if snippet and len(snippet) > 160:
+                            snippet_short += "..."
+
+                        st.markdown(f"- [{i}] {src_label}{page_label}{score_label}")
+                        if ref:
+                            st.markdown(f" - ref: `{ref}`")
+                        if snippet_short:
+                            st.markdown(f" - {snippet_short}")
 
             except requests.exceptions.Timeout:
                 st.error("Backend ei vastannut 10 sekunnissa.")

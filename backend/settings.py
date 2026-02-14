@@ -28,8 +28,23 @@ def env_int(name: str, default: int, min_value: int | None = None, max_value: in
         return default
     return n
 
+def env_float(name: str, default:float, min_value: float| None = None, max_value: float | None = None) -> float:
+    raw = (os.getenv(name) or "").strip()
+    try:
+        v = float(raw) if raw else float(default)
+    except Exception:
+        v = float(default)
+    
+    if min_value is not None and v < min_value:
+        v = min_value
+    if max_value is not None and v > max_value:
+        v = max_value
+
+    return v
+
 USE_OLLAMA = env_bool("USE_OLLAMA", default=False)
 OLLAMA_BASE_URL = env_str("OLLAMA_BASE_URL", default="http://127.0.0.1:11434")
 OLLAMA_MODEL = env_str("OLLAMA_MODEL", default="llama3.1:8b")
 OLLAMA_TIMEOUT_SEC = env_int("OLLAMA_TIMEOUT_SEC", default=30, min_value=1, max_value=600)
 MAX_CONTEXT_CHARS = env_int("MAX_CONTEXT_CHARS", default=6000, min_value=500, max_value=50000)
+MIN_SCORE = env_float("MIN_SCORE", default=0.28, min_value=0.0, max_value=1.0)
