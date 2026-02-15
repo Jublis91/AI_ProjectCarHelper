@@ -120,18 +120,77 @@ elif page == "Kuvat":
 
 elif page == "Ostoslista":
     st.subheader("Ostoslista")
-    st.info("Tähän tulee osalista ja kustannukset.")
-    st.text_area(
-        "Lisää muistiinpano",
-        height=120,
-        key="notes_input",
-    )
 
+    with st.form("add_part_form"):
+        date = st.text_input("Päivä (YYYY-MM-DD)")
+        part = st.text_input("Osa")
+        cost = st.number_input("Hinta", min_value=0.0)
+        notes = st.text_input("Huomio")
+        submitted = st.form_submit_button("Lisää")
+
+        if submitted:
+            try:
+                requests.post(
+                    f"{BACKEND_URL}/parts",
+                    json={
+                        "date": date,
+                        "part": part,
+                        "cost": cost,
+                        "notes": notes,
+                    },
+                )
+                st.success("Lisätty.")
+            except:
+                st.error("Lisäys epäonnistui.")
+
+    try:
+        resp = requests.get(f"{BACKEND_URL}/parts")
+        items = resp.json().get("items", [])
+
+        for item in items:
+            col1, col2 = st.columns([4, 1])
+            with col1:
+                st.write(
+                    f"{item['date']} | {item['part']} | {item['cost']} € | {item['notes']}"
+                )
+            with col2:
+                if st.button("Poista", key=f"del_{item['id']}"):
+                    requests.delete(f"{BACKEND_URL}/parts/{item['id']}")
+                    st.experimental_rerun()
+
+    except:
+        st.error("Ostoslistaa ei voitu hakea.")
+        
 elif page == "PDF-haku":
     st.subheader("PDF-haku")
-    st.info("Tähän tulee käsikirjanhaku.")
-    query = st.text_input("Hae", key="pdf_search")
-    st.write("Hakulause:", query)
+
+    query = st.text_input("Hae käsikirjasta", key="pdf_search")
+    if st.button("Hae", key="pdf_search_button"):
+        if not query.strip():
+            st.warning("Kirjoita hakulause.")
+        else:
+            try:
+                resp = requests.post(
+                    f"{BACKEND_URL}/pdf/search",
+                    json={"query": query},
+                    timeout=10,
+                )
+                resp.raise_for_status()
+                data = resp.json()
+                results = data.get("results", [])
+
+                if not results:
+                    st.info("Ei osumia.")
+                else:
+                    for i, r in enumerate(results, start=1):
+                        st.markdown(f"### [{i}] {r['source']}")
+                        st.write(f"ref: {r['ref']}")
+                        st.write(f"score: {r['score']:.3f}")
+                        st.write(r["snippet"])
+                        st.divider()
+
+            except requests.RequestException:
+                st.error("PDF-haku epäonnistui.")
 
 elif page == "Lokit":
     st.subheader("Lokit")

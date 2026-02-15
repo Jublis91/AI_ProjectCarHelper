@@ -2,11 +2,10 @@ from __future__ import annotations
 
 import re
 import sqlite3
-
 import numpy as np
+
 from fastapi import FastAPI
 from pydantic import BaseModel, Field
-
 from backend.parts_logic import load_parts_df
 from backend.rag import cosine_top_k
 from backend.rules import try_rules
@@ -33,6 +32,15 @@ class AskIn(BaseModel):
     question: str = Field(..., description="User question in natural language")
     top_k: int = Field(5, ge=1, le=20, description="Number of results to return")
 
+class PartIn(BaseModel):
+    date: str
+    part: str
+    cost: float
+    notes: str | None = None
+
+class PdfSearchIn(BaseModel):
+    query: str
+    top_k: int = 5
 
 @app.on_event("startup")
 def on_startup() -> None:
@@ -198,6 +206,73 @@ def fallback_payload(*, idx, sources_out: list[dict], error_code: str) -> dict:
         llm_mode="fallback",
     )
 
+@app.get("/parts")
+def list_parts():
+    with sqlite3.connect(DB_PATH) as conn:
+        rows = conn.execute(
+            "SELECT id, date, part, cost, notes FROM parts ORDER BY, date DESC"
+        ).fetchall()
+
+    return {
+        "items": [
+            {
+                "id": r[0],
+                "date": r[1],
+                "part": r[2],
+                "cost": r[3],
+                "notes": r[4],
+            }
+            for r in rows
+        ]
+    }
+
+@app.post("/parts")
+def add_part(payload: PartIn):
+    with sqlite3.connect(DB_PATH) as conn:
+        conn.execute(
+            "INSERT INTO parts (date, part, cost, notes) VALUES (?, ?, ?, ?)",
+            (payload.date, payload.part, payload.cost, payload.notes),
+        )
+        conn.commit()
+
+    return {"ok": True}
+
+
+@app.delete("/parts/{part_id}")
+def delete_part(part_id: int):
+    with sqlite3.connect(DB_PATH) as conn:
+        conn.execute("DELETE FROM parts WHERE id = ?", (part_id,))
+        conn.commit()
+
+    return {"ok": True}
+
+@app.post("/pdf/search")
+def pdf_search(payload: PdfSearchIn):
+    q = (payload.query or "").strip()
+    if not q:
+        return {"results": []}
+
+    model = getattr(app.state, "embed_model", None)
+    matrix = getattr(app.state, "chunk_matrix", None)
+
+    if model is None or matrix is None or matrix.shape[0] == 0:
+        return {"results": []}
+
+    q_vec = model.encode([q], convert_to_numpy=True).astype(np.float32)[0]
+    idx, scores = cosine_top_k(q_vec, matrix, k=payload.top_k)
+
+    results = []
+    for i, s in zip(idx, scores):
+        i2 = int(i)
+        results.append({
+            "source": app.state.chunk_sources[i2],
+            "ref": app.state.chunk_refs[i2],
+            "page": page_from_ref(app.state.chunk_refs[i2]),
+            "score": float(s),
+            "snippet": app.state.chunk_texts[i2][:400].strip(),
+        })
+
+    return {"results": results}
 
 @app.post("/ask")
 def ask(payload: AskIn) -> dict:
